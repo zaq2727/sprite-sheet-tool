@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全能序列帧工具箱 (Web版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --accent-color: #8b5cf6;
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 侧边栏 --- */
+        .sidebar {
+            width: 340px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-shrink: 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        }
+
+        .tab-header {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: var(--panel-bg);
+            border: none;
+            color: #94a3b8;
+            padding: 15px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: white;
+            background: #263345;
+            border-bottom-color: var(--primary-color);
+        }
+
+        .tab-content {
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .tab-content.active { display: flex; }
+
+        h3 { margin: 0 0 10px 0; font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+
+        .control-group {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        label { display: block; margin-bottom: 5px; font-size: 0.85rem; }
+        
+        input[type="number"], input[type="range"], select {
+            width: 100%;
+            background: #334155;
+            border: 1px solid #475569;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin-bottom: 8px;
+        }
+
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        #bgColorDisplay, #videoBgColorDisplay {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            border: 2px solid white;
+            cursor: pointer;
+            background: transparent;
+            position: relative;
+        }
+        #bgColorDisplay::after, #videoBgColorDisplay::after {
+            content: '?'; position: absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#aaa; font-size:10px;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        button:hover { background-color: #2563eb; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
+        button.secondary { background-color: #475569; }
+        button.accent { background-color: var(--accent-color); }
+        button.accent:hover { background-color: #7c3aed; }
+
+        /* --- 动画预览小窗口 --- */
+        .anim-preview-box {
+            width: 100%;
+            height: 150px;
+            background-image: linear-gradient(45deg, #252525 25%, transparent 25%), linear-gradient(-45deg, #252525 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #252525 75%), linear-gradient(-45deg, transparent 75%, #252525 75%);
+            background-size: 16px 16px;
+            border: 1px solid #475569;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        #animCanvas { max-width: 100%; max-height: 100%; }
+
+        /* --- 主区域 --- */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background-color: #1a1a1a;
+            border-radius: 8px;
+            border: 2px dashed var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: auto;
+        }
+
+        canvas, video {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* 隐藏的 Video 元素，用于处理数据 */
+        #hiddenVideo { display: none; }
+
+        /* 底部序列帧预览条 */
+        .preview-panel {
+            height: 120px;
+            margin-top: 20px;
+            background: var(--panel-bg);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .preview-item {
+            width: 80px;
+            height: 80px;
+            flex-shrink: 0;
+            border: 1px solid #475569;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .preview-item img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        /* 进度条 */
+        #progressContainer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: #334155;
+            display: none;
+        }
+        #progressBar { height: 100%; background: var(--accent-color); width: 0%; transition: width 0.1s; }
+
+        .overlay-text {
+            position: absolute; color: #94a3b8; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="tab-header">
+            <button class="tab-btn active" onclick="switchTab('image')">图片切分模式</button>
+            <button class="tab-btn" onclick="switchTab('video')">视频转序列帧</button>
+        </div>
+
+        <!-- 1. 图片切分 Tab -->
+        <div id="tab-image" class="tab-content active">
+            <div class="control-group">
+                <h3>网格设置</h3>
+                <div style="display:flex; gap:10px;">
+                    <div><label>行数</label><input type="number" id="rowsInput" value="4" min="1"></div>
+                    <div><label>列数</label><input type="number" id="colsInput" value="4" min="1"></div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>抠图 (去底)</h3>
+                <div class="color-picker-wrapper">
+                    <div id="bgColorDisplay" title="点击右侧大图吸取颜色"></div>
+                    <div style="font-size:12px; color:#aaa;">点击画布吸色</div>
+                </div>
+                <label>容差: <span id="toleranceVal">15</span>%</label>
+                <input type="range" id="toleranceInput" min="0" max="60" value="15">
+                <div style="margin-top:5px"><input type="checkbox" id="enableMatting"> <label for="enableMatting" style="display:inline">启用去底</label></div>
+            </div>
+
+            <div class="control-group">
+                <h3>动画预览</h3>
+                <div class="anim-preview-box">
+                    <canvas id="animCanvas"></canvas>
+                </div>
+                <label>帧率 (FPS): <span id="fpsVal">12</span></label>
+                <input type="range" id="fpsInput" min="1" max="60" value="12">
+                <button id="toggleAnimBtn" class="accent" disabled>播放 / 暂停</button>
+            </div>
+
+            <button id="processBtn" disabled>生成切片</button>
+            <button id="downloadBtn" class="secondary" disabled>下载 ZIP</button>
+        </div>
+
+        <!-- 2. 视频处理 Tab -->
+        <div id="tab-video" class="tab-content">
+            <div class="control-group">
+                <h3>视频设置</h3>
+                <button onclick="document.getElementById('videoInput').click()">上传视频文件</button>
+                <input type="file" id="videoInput" accept="video/*" style="display:none">
+                
+                <label style="margin-top:10px">每多少秒截取一帧:</label>
+                <input type="number" id="videoInterval" value="0.1" step="0.05" min="0.03">
+                <p style="font-size:11px; color:#64748b">0.1秒 ≈ 10张/秒。值越小图片越多。</p>
+            </div>
+
+            <div class="control-group">
+                <h3>视频抠图</h3>
+                <div class="color-picker-wrapper">
+                    <div id="videoBgColorDisplay" title="先暂停视频，点击画面吸取颜色"></div>
+                    <div style="font-size:12px; color:#aaa;">点击视频画面吸色</div>
+                </div>
+                <label>容差: <span id="videoToleranceVal">20</span>%</label>
+                <input type="range" id="videoToleranceInput" min="0" max="60" value="20">
+                <div style="margin-top:5px"><input type="checkbox" id="enableVideoMatting"> <label for="enableVideoMatting" style="display:inline">启用去底</label></div>
+            </div>
+
+            <button id="processVideoBtn" class="accent" disabled>开始提取序列帧</button>
+            <button id="downloadVideoBtn" class="secondary" disabled>下载 ZIP</button>
+        </div>
+    </div>
+
+    <!-- 主区域 -->
+    <div class="main-content">
+        <div id="progressContainer"><div id="progressBar"></div></div>
+
+        <div class="canvas-container" id="workArea">
+            <div id="overlayText" class="overlay-text">
+                <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <p>请在左侧选择模式并上传文件</p>
+            </div>
+            
+            <!-- 图片模式画布 -->
+            <canvas id="editorCanvas" style="display:none; cursor:crosshair"></canvas>
+            <input type="file" id="imgInput" accept="image/*" style="display:none">
+
+            <!-- 视频模式播放器 -->
+            <video id="mainVideo" controls style="display:none; max-height:90%"></video>
+        </div>
+
+        <div class="preview-panel" id="previewContainer">
+            <div style="color: #64748b; font-size: 14px; padding: 0 20px;">等待生成...</div>
+        </div>
+    </div>
+
+    <!-- 隐藏的视频处理画布 -->
+    <canvas id="hiddenVideoCanvas" style="display:none"></canvas>
+
+    <script>
+        // --- 全局变量 ---
+        let currentMode = 'image'; // 'image' or 'video'
+        let generatedBlobs = [];   // 存放最终结果 {blob, name}
+        let selectedColor = { r: 0, g: 255, b: 0 }; // 默认绿色
+        
+        // 动画预览相关
+        let animInterval = null;
+        let animFrameIndex = 0;
+
+        // --- DOM ---
+        const editorCanvas = document.getElementById('editorCanvas');
+        const ctx = editorCanvas.getContext('2d', { willReadFrequently: true });
+        const mainVideo = document.getElementById('mainVideo');
+        const workArea = document.getElementById('workArea');
+        const overlayText = document.getElementById('overlayText');
+        const previewContainer = document.getElementById('previewContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+
+        // --- 1. Tab 切换系统 ---
+        function switchTab(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // 激活当前Tab
+            document.querySelector(`.tab-btn:nth-child(${mode === 'image' ? 1 : 2})`).classList.add('active');
+            document.getElementById(`tab-${mode}`).classList.add('active');
+
+            // 切换主区域显示
+            if (mode === 'image') {
+                mainVideo.style.display = 'none';
+                if(imgLoaded) editorCanvas.style.display = 'block';
+                else overlayText.style.display = 'flex';
+                overlayText.innerHTML = '<p>点击此处上传序列帧图片 (Sprite Sheet)</p>';
+            } else {
+                editorCanvas.style.display = 'none';
+                if(videoLoaded) mainVideo.style.display = 'block';
+                else overlayText.style.display = 'flex';
+                overlayText.innerHTML = '<p>请在左侧点击 "上传视频文件"</p>';
+            }
+            // 清空预览
+            previewContainer.innerHTML = '<div style="color: #64748b; font-size: 14px; padding: 0 20px;">等待生成...</div>';
+            stopAnimation();
+        }
+
+        // --- 2. 图片模式逻辑 ---
+        let imgLoaded = false;
+        let originalImage = null;
+
+        workArea.addEventListener('click', (e) => {
+            if (currentMode === 'image' && e.target !== editorCanvas) document.getElementById('imgInput').click();
+        });
+
+        document.getElementById('imgInput').addEventListener('change', (e) => handleImage(e.target.files[0]));
+        
+        // 拖拽
+        workArea.addEventListener('dragover', (e) => e.preventDefault());
+        workArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (currentMode === 'image' && file.type.startsWith('image/')) handleImage(file);
+            else if (currentMode === 'video' && file.type.startsWith('video/')) handleVideo(file);
+        });
+
+        function handleImage(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+                    imgLoaded = true;
+                    editorCanvas.width = img.width;
+                    editorCanvas.height = img.height;
+                    editorCanvas.style.display = 'block';
+                    overlayText.style.display = 'none';
+                    renderImageGrid();
+                    document.getElementById('processBtn').disabled = false;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderImageGrid() {
+            if (!originalImage) return;
+            ctx.drawImage(originalImage, 0, 0);
+            const rows = parseInt(document.getElementById('rowsInput').value) || 1;
+            const cols = parseInt(document.getElementById('colsInput').value) || 1;
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 1;
+            
+            const cellW = editorCanvas.width / cols;
+            const cellH = editorCanvas.height / rows;
+
+            for (let i=1; i<cols; i++) { ctx.moveTo(i*cellW, 0); ctx.lineTo(i*cellW, editorCanvas.height); }
+            for (let i=1; i<rows; i++) { ctx.moveTo(0, i*cellH); ctx.lineTo(editorCanvas.width, i*cellH); }
+            ctx.stroke();
+        }
+
+        // 图片监听更新
+        ['rowsInput', 'colsInput'].forEach(id => {
+            document.getElementById(id).addEventListener('input', renderImageGrid);
+        });
+
+        // 图片吸色
+        editorCanvas.addEventListener('mousedown', (e) => {
+            if (!originalImage) return;
+            pickColor(e, editorCanvas, originalImage, 'bgColorDisplay', 'enableMatting');
+            renderImageGrid(); // 重绘网格
+        });
+
+
+        // --- 3. 视频模式逻辑 ---
+        let videoLoaded = false;
+        const videoInput = document.getElementById('videoInput');
+        
+        videoInput.addEventListener('change', (e) => handleVideo(e.target.files[0]));
+
+        function handleVideo(file) {
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            mainVideo.src = url;
+            mainVideo.style.display = 'block';
+            overlayText.style.display = 'none';
+            videoLoaded = true;
+            document.getElementById('processVideoBtn').disabled = false;
+            
+            // 视频吸色监听
+            mainVideo.onclick = (e) => {
+               // 需要创建一个临时的canvas来读取视频当前帧的像素
+               const tempC = document.createElement('canvas');
+               tempC.width = mainVideo.videoWidth;
+               tempC.height = mainVideo.videoHeight;
+               const tempCtx = tempC.getContext('2d');
+               tempCtx.drawImage(mainVideo, 0, 0, tempC.width, tempC.height);
+               
+               // 计算点击位置比例
+               const rect = mainVideo.getBoundingClientRect();
+               const scaleX = tempC.width / rect.width;
+               const scaleY = tempC.height / rect.height;
+               const x = (e.clientX - rect.left) * scaleX;
+               const y = (e.clientY - rect.top) * scaleY;
+               
+               const p = tempCtx.getImageData(x, y, 1, 1).data;
+               updateColorUI(p[0], p[1], p[2], 'videoBgColorDisplay');
+               document.getElementById('enableVideoMatting').checked = true;
+               
+               // 为了反馈，暂停视频
+               mainVideo.pause();
+            };
+        }
+
+
+        // --- 4. 核心：颜色提取与去底算法 ---
+        
+        function pickColor(e, canvasEl, sourceImg, uiId, checkId) {
+            const rect = canvasEl.getBoundingClientRect();
+            const scaleX = canvasEl.width / rect.width;
+            const scaleY = canvasEl.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+
+            // 临时画一下原图取色（不带网格）
+            const tempC = document.createElement('canvas');
+            tempC.width = 1; tempC.height = 1;
+            const tCtx = tempC.getContext('2d');
+            // 这里用了一个技巧：只画点击的那个像素，性能最高
+            tCtx.drawImage(sourceImg, x, y, 1, 1, 0, 0, 1, 1);
+            
+            const p = tCtx.getImageData(0, 0, 1, 1).data;
+            updateColorUI(p[0], p[1], p[2], uiId);
+            document.getElementById(checkId).checked = true;
+        }
+
+        function updateColorUI(r, g, b, domId) {
+            selectedColor = { r, g, b };
+            document.getElementById(domId).style.backgroundColor = `rgb(${r},${g},${b})`;
+            document.getElementById(domId).innerHTML = ''; // 清除问号
+        }
+
+        function removeBackground(imageData, tolerance) {
+            const data = imageData.data;
+            const maxDist = Math.sqrt(3 * 255 * 255);
+            const threshold = (tolerance / 100) * maxDist;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const dist = Math.sqrt(
+                    Math.pow(data[i] - selectedColor.r, 2) +
+                    Math.pow(data[i+1] - selectedColor.g, 2) +
+                    Math.pow(data[i+2] - selectedColor.b, 2)
+                );
+                if (dist <= threshold) data[i+3] = 0; // Alpha = 0
+            }
+            return imageData;
+        }
+
+        // --- 5. 处理流程 (图片模式) ---
+        
+        document.getElementById('processBtn').addEventListener('click', async () => {
+            const rows = parseInt(document.getElementById('rowsInput').value);
+            const cols = parseInt(document.getElementById('colsInput').value);
+            const doMatting = document.getElementById('enableMatting').checked;
+            const tol = parseInt(document.getElementById('toleranceInput').value);
+            
+            generatedBlobs = [];
+            previewContainer.innerHTML = '';
+            
+            const cellW = Math.floor(originalImage.width / cols);
+            const cellH = Math.floor(originalImage.height / rows);
+            
+            const tCanvas = document.createElement('canvas');
+            tCanvas.width = cellW; tCanvas.height = cellH;
+            const tCtx = tCanvas.getContext('2d');
+
+            for(let r=0; r<rows; r++) {
+                for(let c=0; c<cols; c++) {
+                    tCtx.clearRect(0,0,cellW,cellH);
+                    tCtx.drawImage(originalImage, c*cellW, r*cellH, cellW, cellH, 0, 0, cellW, cellH);
+                    
+                    if(doMatting) {
+                        const imgData = tCtx.getImageData(0,0,cellW,cellH);
+                        const newImgData = removeBackground(imgData, tol);
+                        tCtx.putImageData(newImgData, 0, 0);
+                    }
+                    
+                    await new Promise(resolve => tCanvas.toBlob(blob => {
+                        generatedBlobs.push({blob, name: `tile_${r}_${c}.png`});
+                        addPreview(blob);
+                        resolve();
+                    }));
+                }
+            }
+            
+            // 启用后续功能
+            document.getElementById('downloadBtn').disabled = false;
+            document.getElementById('toggleAnimBtn').disabled = false;
+            startAnimation(); // 自动开始预览
+        });
+
+
+        // --- 6. 处理流程 (视频模式) ---
+        
+        document.getElementById('processVideoBtn').addEventListener('click', async () => {
+            if(!mainVideo.duration) return;
+            
+            const interval = parseFloat(document.getElementById('videoInterval').value);
+            const doMatting = document.getElementById('enableVideoMatting').checked;
+            const tol = parseInt(document.getElementById('videoToleranceInput').value);
+            
+            // 准备工作
+            mainVideo.pause();
+            mainVideo.currentTime = 0;
+            generatedBlobs = [];
+            previewContainer.innerHTML = '';
+            progressContainer.style.display = 'block';
+            
+            const vCanvas = document.getElementById('hiddenVideoCanvas');
+            vCanvas.width = mainVideo.videoWidth;
+            vCanvas.height = mainVideo.videoHeight;
+            const vCtx = vCanvas.getContext('2d');
+
+            let currentTime = 0;
+            const duration = mainVideo.duration;
+            let frameCount = 0;
+
+            // 递归式抽取，防止阻塞UI
+            async function captureFrame() {
+                if(currentTime >= duration) {
+                    // 完成
+                    progressContainer.style.display = 'none';
+                    document.getElementById('downloadVideoBtn').disabled = false;
+                    alert(`完成！共生成 ${generatedBlobs.length} 帧。`);
+                    return;
+                }
+
+                // 更新进度条
+                progressBar.style.width = (currentTime / duration * 100) + "%";
+
+                mainVideo.currentTime = currentTime;
+                
+                // 等待seek完成
+                await new Promise(resolve => {
+                    const seekHandler = () => {
+                        mainVideo.removeEventListener('seeked', seekHandler);
+                        resolve();
+                    };
+                    mainVideo.addEventListener('seeked', seekHandler);
+                });
+
+                // 绘制并处理
+                vCtx.drawImage(mainVideo, 0, 0);
+                
+                if(doMatting) {
+                    const imgData = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height);
+                    const newImgData = removeBackground(imgData, tol);
+                    vCtx.putImageData(newImgData, 0, 0);
+                }
+
+                await new Promise(resolve => vCanvas.toBlob(blob => {
+                    generatedBlobs.push({blob, name: `video_frame_${frameCount.toString().padStart(4,'0')}.png`});
+                    addPreview(blob);
+                    resolve();
+                }, 'image/png'));
+
+                frameCount++;
+                currentTime += interval;
+                
+                // 使用 setTimeout 让出主线程，防止页面卡死
+                setTimeout(captureFrame, 10); 
+            }
+
+            captureFrame();
+        });
+
+        // --- 7. 通用功能: 预览与下载 ---
+        
+        function addPreview(blob) {
+            const url = URL.createObjectURL(blob);
+            const div = document.createElement('div');
+            div.className = 'preview-item';
+            const img = document.createElement('img');
+            img.src = url;
+            div.appendChild(img);
+            previewContainer.appendChild(div);
+            // 保持滚动条在最右
+            previewContainer.scrollLeft = previewContainer.scrollWidth;
+        }
+
+        // 下载逻辑
+        ['downloadBtn', 'downloadVideoBtn'].forEach(id => {
+            document.getElementById(id).addEventListener('click', () => {
+                const zip = new JSZip();
+                generatedBlobs.forEach(item => zip.file(item.name, item.blob));
+                zip.generateAsync({type:"blob"}).then(content => {
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(content);
+                    link.download = "frames.zip";
+                    link.click();
+                });
+            });
+        });
+
+        // --- 8. 动画预览逻辑 ---
+        
+        const animCanvas = document.getElementById('animCanvas');
+        const animCtx = animCanvas.getContext('2d');
+        const toggleAnimBtn = document.getElementById('toggleAnimBtn');
+        const fpsInput = document.getElementById('fpsInput');
+        let isPlaying = false;
+
+        function startAnimation() {
+            if(generatedBlobs.length === 0) return;
+            if(animInterval) clearInterval(animInterval);
+            
+            isPlaying = true;
+            toggleAnimBtn.innerText = "暂停";
+            
+            // 加载第一帧以调整大小
+            const img = new Image();
+            img.onload = () => {
+                animCanvas.width = img.width;
+                animCanvas.height = img.height;
+            };
+            img.src = URL.createObjectURL(generatedBlobs[0].blob);
+
+            const fps = parseInt(fpsInput.value);
+            document.getElementById('fpsVal').innerText = fps;
+
+            animInterval = setInterval(() => {
+                if(generatedBlobs.length === 0) return;
+                
+                animFrameIndex = (animFrameIndex + 1) % generatedBlobs.length;
+                
+                const frameImg = new Image();
+                frameImg.onload = () => {
+                    animCtx.clearRect(0,0,animCanvas.width, animCanvas.height);
+                    animCtx.drawImage(frameImg, 0, 0);
+                };
+                frameImg.src = URL.createObjectURL(generatedBlobs[animFrameIndex].blob);
+
+            }, 1000 / fps);
+        }
+
+        function stopAnimation() {
+            isPlaying = false;
+            toggleAnimBtn.innerText = "播放";
+            clearInterval(animInterval);
+        }
+
+        toggleAnimBtn.addEventListener('click', () => {
+            if(isPlaying) stopAnimation();
+            else startAnimation();
+        });
+        
+        fpsInput.addEventListener('input', () => {
+            document.getElementById('fpsVal').innerText = fpsInput.value;
+            if(isPlaying) startAnimation(); // 重置计时器
+        });
+
+        // 滑块数字显示通用逻辑
+        ['toleranceInput', 'videoToleranceInput'].forEach(id => {
+            const el = document.getElementById(id);
+            const valEl = document.getElementById(id === 'toleranceInput' ? 'toleranceVal' : 'videoToleranceVal');
+            el.addEventListener('input', () => valEl.innerText = el.value);
+        });
+
+    </script>
+</body>
+</html>
